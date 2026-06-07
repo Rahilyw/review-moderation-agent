@@ -1,167 +1,267 @@
-# Skillable Deployment — LAB520
+# Zava Product Review Moderation Agent
 
-> **Session:** LAB520 — Get Started with Models in Microsoft Foundry: From First Inference to Deployed Agent  
-> **Purpose:** Unattended Azure provisioning for Skillable lab environments using Service Principal authentication
+A product review moderation pipeline built on **Microsoft Foundry**, deployed as a cloud-hosted agent. Built as part of the Microsoft Build 2026 lab: *Get Started with Models in Microsoft Foundry: From First Inference to Deployed Agent*.
 
----
-
-## Why This Exists
-
-The standard `infra/` templates hardcode `principalType: 'User'` on all RBAC role assignments. When Skillable runs deployments under a Service Principal, this can cause failures because the SP identity cannot always resolve a `User` principal via Graph API.
-
-This folder contains modified infrastructure templates and deployment scripts that make `principalType` configurable, enabling SP-driven unattended deployments to correctly assign roles to the lab user.
+![Agent Status](https://img.shields.io/badge/agent-active-brightgreen) ![Model](https://img.shields.io/badge/model-gpt--4.1--mini-blue) ![Platform](https://img.shields.io/badge/platform-Microsoft%20Foundry-purple)
 
 ---
 
-## Folder Contents
+## What This Does
 
-```
-skillable/
-├── README.md                              # This file
-├── SETUP.md                               # Detailed deployment guide & troubleshooting
-├── deploy.ps1                             # azd-based deployment script (recommended)
-├── deploy-arm.ps1                         # ARM-only deployment script (no azd needed)
-└── infra/
-    ├── abbreviations.json                 # Resource name prefixes
-    ├── azuredeploy.json                   # ARM template with principalType support
-    ├── azuredeploy.parameters.json        # ARM parameters
-    ├── main.bicep                         # Bicep template with principalType parameter
-    ├── main.parameters.json               # Bicep parameters (azd env var bindings)
-    └── modules/
-        ├── ai-services.bicep              # AI Services, project, models, ACR, capability host
-        ├── monitoring.bicep               # Log Analytics + Application Insights
-        └── role-assignments.bicep         # RBAC roles with configurable principalType
-```
+Zava (a fictional global home-improvement retailer) receives thousands of product reviews daily. This project automates moderation by classifying each review into one of three categories:
 
-### Key Differences from Standard `infra/`
-
-| File | Change |
-|------|--------|
-| `main.bicep` | Adds `principalType` parameter, passes it to role-assignments module |
-| `main.parameters.json` | Binds `AZURE_PRINCIPAL_TYPE` env var |
-| `modules/role-assignments.bicep` | Uses `principalType` param instead of hardcoded `'User'` |
-| `azuredeploy.json` | Adds `principalType` parameter to ARM template and all attendee role assignments |
-| `azuredeploy.parameters.json` | Adds `principalType` field |
+| Classification | Action | Description |
+|---|---|---|
+| `SAFE` (confidence ≥ 0.8) | ✅ APPROVED | Review goes live on the site |
+| `UNSAFE` (confidence ≥ 0.7) | 🚫 BLOCKED | Review is rejected |
+| Everything else | 🔍 FLAGGED_FOR_REVIEW | Sent to human moderation queue |
 
 ---
 
-## Quick Start
+## Architecture
 
-### Option A: azd-based (recommended)
-
-Requires Azure CLI + Azure Developer CLI on the Skillable VM.
-
-```powershell
-$appId     = "@lab.CloudSubscription.AppId"
-$appSecret = "@lab.CloudSubscription.AppSecret"
-$tenantId  = "@lab.CloudSubscription.TenantId"
-$subId     = "@lab.CloudSubscription.Id"
-$region    = "@lab.CloudResourceGroup(ResourceGroup1).Location"
-$envName   = "build@lab.LabInstance.Id"
-$labUser   = "@lab.CloudPortalCredential(User1).Username"
-
-cd C:\Users\LabUser\AppData\Local\Temp
-git clone https://github.com/microsoft/Build26-LAB520.git
-cd Build26-LAB520
-
-.\skillable\deploy.ps1 `
-    -AppId $appId `
-    -AppSecret $appSecret `
-    -TenantId $tenantId `
-    -SubscriptionId $subId `
-    -Region $region `
-    -EnvironmentName $envName `
-    -LabUsername $labUser `
-    -PrincipalType "User"
+```
+Customer Review
+      │
+      ▼
+ Hosted Agent (Foundry)
+      │
+      ▼
+ gpt-4.1-mini ──► JSON Classification
+      │              { classification, confidence, reason }
+      ▼
+ Business Logic Layer
+      │
+      ├── APPROVED
+      ├── FLAGGED_FOR_REVIEW
+      └── BLOCKED
 ```
 
-### Option B: ARM-only (no azd required)
+The agent runs as a **Docker container on Microsoft Foundry Agent Service**, exposed via the OpenAI Responses API. It can be called from the Foundry Playground, other agents, or any HTTP client.
 
-Requires only Azure CLI. Uses `az deployment sub create` directly.
+---
 
-```powershell
-$appId     = "@lab.CloudSubscription.AppId"
-$appSecret = "@lab.CloudSubscription.AppSecret"
-$tenantId  = "@lab.CloudSubscription.TenantId"
-$subId     = "@lab.CloudSubscription.Id"
-$region    = "@lab.CloudResourceGroup(ResourceGroup1).Location"
-$envName   = "build@lab.LabInstance.Id"
-$labUser   = "@lab.CloudPortalCredential(User1).Username"
+## Project Structure
 
-cd C:\Users\LabUser\AppData\Local\Temp
-git clone https://github.com/microsoft/Build26-LAB520.git
-cd Build26-LAB520
-
-.\skillable\deploy-arm.ps1 `
-    -AppId $appId `
-    -AppSecret $appSecret `
-    -TenantId $tenantId `
-    -SubscriptionId $subId `
-    -Region $region `
-    -EnvironmentName $envName `
-    -LabUsername $labUser `
-    -PrincipalType "User"
 ```
-
-### Option C: Minimal inline script
-
-If you prefer not to use the deploy scripts, add three lines to your existing lifecycle action before `azd up`:
-
-```powershell
-# After cloning the repo and before azd up:
-Copy-Item -Path skillable\infra\main.bicep -Destination infra\main.bicep -Force
-Copy-Item -Path skillable\infra\main.parameters.json -Destination infra\main.parameters.json -Force
-Copy-Item -Path skillable\infra\modules\role-assignments.bicep -Destination infra\modules\role-assignments.bicep -Force
-
-azd env set AZURE_PRINCIPAL_TYPE "User"
+├── src/
+│   ├── 01_first_inference.py        # Lab 3: Basic chat completion
+│   ├── 02_comment_moderation.py     # Lab 4: Full moderation pipeline
+│   ├── 03_model_comparison.py       # Lab 5: Multi-model comparison
+│   ├── sample_comments.json         # Test dataset (15 reviews)
+│   ├── agent/
+│   │   ├── app.py                   # Hosted agent (Agent Framework SDK)
+│   │   ├── agent.yaml               # Agent manifest
+│   │   ├── Dockerfile               # Container definition
+│   │   └── requirements.txt         # Agent dependencies
+│   └── tests/
+│       ├── validate_lab.py          # Environment validation script
+│       └── test_moderation.py       # Unit tests for business logic
+├── infra/
+│   ├── main.bicep                   # Infrastructure orchestration
+│   └── modules/
+│       ├── ai-services.bicep        # AI Services, project, model, ACR
+│       ├── monitoring.bicep         # Application Insights
+│       └── role-assignments.bicep   # RBAC configuration
+├── azure.yaml                       # azd project configuration
+├── .env.sample                      # Environment variable template
+└── requirements.txt                 # Python dependencies
 ```
 
 ---
 
-## Prerequisites
+## Key Features
 
-| Tool | Required By | Install |
-|------|------------|---------|
-| Azure CLI (2.67+) | Both options | `winget install -e --id Microsoft.AzureCLI` |
-| Azure Developer CLI | Option A only | `winget install -e --id Microsoft.Azd` |
-| Git | Cloning repo | `winget install -e --id Git.Git` |
-| Python 3.12+ | Lab exercises | `winget install -e --id Python.Python.3.12` |
-
----
-
-## principalType Values
-
-| Value | Use When |
-|-------|----------|
-| `User` | `principalId` is a lab user's Object ID (standard Skillable scenario) |
-| `ServicePrincipal` | `principalId` is an SP or managed identity |
+- **Structured JSON output** — system prompt forces `{ classification, confidence, reason }` every time
+- **Deterministic classification** — `temperature=0.0` ensures consistent results
+- **Confidence-based routing** — business logic layer on top of model output
+- **Graceful error handling** — catches Azure content filter blocks and malformed JSON
+- **Batch + interactive modes** — process files or type reviews in real time
+- **Cloud-hosted** — deployed as a managed container, scales automatically
 
 ---
 
-## What Gets Deployed
+## Setup
 
-| Resource | Purpose |
-|----------|---------|
-| Resource Group (`rg-{envName}`) | Contains all lab resources |
-| Log Analytics + App Insights | Monitoring and agent telemetry |
-| Azure AI Services (Foundry) | Model hosting account |
-| Foundry Project | Project with App Insights connection |
-| `gpt-4.1-mini` deployment | Primary model (Labs 3–6) |
-| `gpt-4.1` deployment (optional) | Second model (Lab 5 comparison) |
-| Azure Container Registry (optional) | Agent container images (Lab 6) |
-| Capability Host (optional) | Hosted agent compute (Lab 6) |
-| RBAC role assignments | OpenAI User, Contributor, AcrPush for attendee |
+### Prerequisites
 
----
+- Python 3.12+
+- [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- An Azure subscription with Microsoft Foundry access
 
-## Cleanup
+### 1. Clone and install dependencies
 
-```powershell
-az group delete --name "rg-build<LabInstanceId>" --yes --no-wait
+```bash
+git clone https://github.com/Rahilyw/review-moderation-agent.git
+cd review-moderation-agent
+python -m venv .venv
+.venv\Scripts\Activate.ps1   # Windows
+pip install -r requirements.txt
+```
+
+### 2. Configure environment
+
+```bash
+cp .env.sample .env
+# Fill in PROJECT_ENDPOINT and MODEL_DEPLOYMENT_NAME
+```
+
+### 3. Validate setup
+
+```bash
+python -X utf8 src/tests/validate_lab.py
 ```
 
 ---
 
-## Further Reading
+## Running Locally
 
-See [SETUP.md](SETUP.md) for detailed deployment walkthroughs, Skillable lifecycle action examples, role assignment details, and troubleshooting.
+### Basic inference
+
+```bash
+python src/01_first_inference.py
+```
+
+### Moderation pipeline (batch mode)
+
+```bash
+python src/02_comment_moderation.py
+```
+
+### Moderation pipeline (file mode)
+
+```bash
+python src/02_comment_moderation.py --file src/sample_comments.json
+```
+
+### Moderation pipeline (interactive mode)
+
+```bash
+python src/02_comment_moderation.py --interactive
+```
+
+### Run unit tests
+
+```bash
+pytest src/tests/test_moderation.py -v
+```
+
+---
+
+## Deploying the Hosted Agent
+
+### 1. Set the Foundry project endpoint
+
+```bash
+azd env set FOUNDRY_PROJECT_ENDPOINT "https://<your-resource>.services.ai.azure.com/api/projects/<your-project>"
+```
+
+### 2. Deploy
+
+```bash
+azd up
+```
+
+This builds the Docker image in Azure Container Registry and deploys the agent to Foundry Agent Service.
+
+### 3. Check status
+
+```bash
+azd ai agent show --output table
+```
+
+### 4. Invoke
+
+```bash
+azd ai agent invoke "Love this cordless drill! Battery lasts all day."
+```
+
+Expected response:
+
+```json
+{
+  "classification": "SAFE",
+  "confidence": 0.95,
+  "reason": "Positive product feedback describing good battery life and torque."
+}
+```
+
+### 5. Clean up
+
+```bash
+azd down --force --purge
+```
+
+---
+
+## Example Classifications
+
+| Review | Classification | Action |
+|---|---|---|
+| "Love this cordless drill! Battery lasts all day." | SAFE (1.00) | ✅ APPROVED |
+| "This paint is garbage and whoever designed it should be fired" | NEEDS_REVIEW (0.90) | 🔍 FLAGGED |
+| "You're all idiots if you shop here" | UNSAFE (0.90) | 🚫 BLOCKED |
+| "Does this deck stain work on pressure-treated lumber?" | SAFE (1.00) | ✅ APPROVED |
+| "The drill is excellent but the store staff are completely useless" | NEEDS_REVIEW (0.85) | 🔍 FLAGGED |
+
+---
+
+## How It Works
+
+### The System Prompt
+
+The core of the system is a structured prompt that constrains the model to return only valid JSON:
+
+```python
+SYSTEM_PROMPT = """You are a product review moderation system for Zava...
+Respond ONLY with valid JSON in this exact format:
+{
+    "classification": "<SAFE|NEEDS_REVIEW|UNSAFE>",
+    "confidence": <0.0-1.0>,
+    "reason": "<brief explanation>"
+}"""
+```
+
+### The Business Logic Layer
+
+The model provides probabilistic output — the code makes deterministic decisions:
+
+```python
+def apply_moderation(result: dict) -> str:
+    classification = result["classification"]
+    confidence = result["confidence"]
+    if classification == "SAFE" and confidence >= 0.8:
+        return "APPROVED"
+    elif classification == "UNSAFE" and confidence >= 0.7:
+        return "BLOCKED"
+    else:
+        return "FLAGGED_FOR_REVIEW"
+```
+
+### The Hosted Agent
+
+The same logic runs in the cloud via the Microsoft Agent Framework:
+
+```python
+agent = Agent(
+    client=FoundryChatClient(
+        project_endpoint=PROJECT_ENDPOINT,
+        model=MODEL_DEPLOYMENT_NAME,
+        credential=DefaultAzureCredential(),
+    ),
+    name="zava-review-moderation-agent",
+    instructions=SYSTEM_PROMPT,
+)
+ResponsesHostServer(agent).run(port=8088)
+```
+
+---
+
+## Built With
+
+- [Microsoft Foundry](https://ai.azure.com) — AI model hosting and agent service
+- [Azure AI Projects SDK](https://pypi.org/project/azure-ai-projects/) — Foundry project client
+- [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/) — Infrastructure and deployment
+- [Microsoft Agent Framework](https://pypi.org/project/agent-framework/) — Hosted agent runtime
+- [Bicep](https://learn.microsoft.com/azure/azure-resource-manager/bicep/) — Infrastructure as Code
+- `gpt-4.1-mini` — Model used for classification
