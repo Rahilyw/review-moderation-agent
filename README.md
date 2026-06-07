@@ -10,12 +10,11 @@ A product review moderation pipeline built on **Microsoft Foundry**, deployed as
 
 ### Foundry Playground — Live Agent Classification
 ![Foundry Playground showing UNSAFE and SAFE classifications](Screenshots/Screenshot%202026-06-07%20130944.png)
-![Foundry Playground showing NEEDS_REVIEW classifications](Screenshots/Screenshot%202026-06-07%20132227.png)
 
 ### CLI — Remote Agent Invocation via `azd ai agent invoke`
 ![VS Code terminal showing remote agent invoke returning NEEDS_REVIEW](Screenshots/Screenshot%202026-06-07%20132711.png)
 
-### CLI — Local Agent Test via `azd ai agent invoke --local`
+### CLI — Local Agent Test via `python src/02_comment_moderation.py --interactive`
 ![Terminal showing local agent returning NEEDS_REVIEW with confidence 0.8](Screenshots/Screenshot%202026-06-07%20132912.png)
 
 ---
