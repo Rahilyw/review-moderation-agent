@@ -39,21 +39,24 @@ def main():
     # --- Get inference client ---
     inference_client = project_client.get_openai_client()
 
+
     # --- Send inference request ---
+    user_input = "I'm Bruno and I'm renovating my kitchen. What tools do I need to install new cabinets?"
+    temperature = 0.0
+
     print(f"Sending inference request to model: {model}")
     response = inference_client.chat.completions.create(
-        model=model,
+        model= model,
+        temperature=temperature,
         messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful assistant for Zava, a global home-improvement retailer. Respond concisely.",
-            },
-            {
-                "role": "user",
-                "content": "What is Microsoft Foundry and how could a retailer like Zava use it? Answer in one sentence.",
-            },
+            {"role": "system", "content": "You are Cora, Zava's friendly AI shopping assistant. Help customers find the right home-improvement products."},
+            {"role": "user", "content": user_input},
         ],
     )
+
+    print("User:", user_input)
+    print("Temperature:", temperature)
+    print("Response:\n", response.choices[0].message.content)
 
     # --- Process response ---
     content = response.choices[0].message.content
