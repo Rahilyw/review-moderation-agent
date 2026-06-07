@@ -9,7 +9,6 @@ A product review moderation pipeline built on **Microsoft Foundry**, deployed as
 ## Demo
 
 ### Foundry Playground — Live Agent Classification
-![Foundry Playground showing UNSAFE and SAFE classifications](Screenshots/Screenshot%202026-06-07%20130944.png)
 ![Foundry Playground showing NEEDS_REVIEW classifications](Screenshots/Screenshot%202026-06-07%20132227.png)
 
 
