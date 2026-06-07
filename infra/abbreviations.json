@@ -1,0 +1,7 @@
+{
+  "resourcesResourceGroups": "rg-",
+  "operationalInsightsWorkspaces": "log-",
+  "insightsComponents": "appi-",
+  "cognitiveServicesAccounts": "ai-",
+  "containerRegistries": "acr"
+}

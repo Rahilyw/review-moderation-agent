@@ -1,0 +1,17 @@
+[
+    {"comment": "Love this cordless drill! Battery lasts all day and the torque is impressive.", "expected": "SAFE"},
+    {"comment": "This paint is garbage and whoever designed it should be fired", "expected": "NEEDS_REVIEW"},
+    {"comment": "I will find you at the store and make you regret selling me this junk", "expected": "UNSAFE"},
+    {"comment": "Does this deck stain work on pressure-treated lumber?", "expected": "SAFE"},
+    {"comment": "Meh, the tile cutter is okay. Not great, not terrible.", "expected": "SAFE"},
+    {"comment": "The staff are useless and ugly -- never going back to this Zava location", "expected": "UNSAFE"},
+    {"comment": "I respectfully disagree with the 5-star ratings -- the sander vibrates too much.", "expected": "SAFE"},
+    {"comment": "LOL Zava sells overpriced junk, are they even trying???", "expected": "NEEDS_REVIEW"},
+    {"comment": "The plumbing section has everything I needed for my bathroom remodel. Great selection!", "expected": "SAFE"},
+    {"comment": "Anyone who buys this ladder is a complete moron", "expected": "UNSAFE"},
+    {"comment": "The online product descriptions could use more detail on dimensions.", "expected": "SAFE"},
+    {"comment": "Why does Zava even sell this brand? Total waste of shelf space.", "expected": "NEEDS_REVIEW"},
+    {"comment": "The SmartHome hub won't pair with my existing light switches -- getting error code E14.", "expected": "SAFE"},
+    {"comment": "Zava employees are the worst people on earth", "expected": "UNSAFE"},
+    {"comment": "Not my first choice for kitchen cabinets, but the price is fair for the quality.", "expected": "SAFE"}
+]

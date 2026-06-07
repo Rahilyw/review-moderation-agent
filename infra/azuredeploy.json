@@ -1,0 +1,479 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "LAB520 — Skillable deployment. Provisions all Azure resources with configurable principalType for Service Principal (unattended) deployments. Supports both User and ServicePrincipal RBAC assignments."
+  },
+  "parameters": {
+    "environmentName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "defaultValue": "foundry-lab",
+      "metadata": {
+        "description": "Name of the environment (used to generate resource names and resource group)."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "northcentralus",
+      "metadata": {
+        "description": "Primary Azure region for all resources."
+      }
+    },
+    "principalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Object ID of the lab attendee (or service principal) to assign RBAC roles. Leave empty to skip role assignments."
+      }
+    },
+    "principalType": {
+      "type": "string",
+      "defaultValue": "User",
+      "allowedValues": [
+        "User",
+        "ServicePrincipal"
+      ],
+      "metadata": {
+        "description": "Type of the principal for RBAC assignments. Use 'User' when assigning to a lab user, 'ServicePrincipal' when assigning to an SP or managed identity."
+      }
+    },
+    "modelName": {
+      "type": "string",
+      "defaultValue": "gpt-4.1-mini",
+      "metadata": {
+        "description": "Primary model to deploy."
+      }
+    },
+    "modelVersion": {
+      "type": "string",
+      "defaultValue": "2025-04-14",
+      "metadata": {
+        "description": "Version of the primary model."
+      }
+    },
+    "modelFormat": {
+      "type": "string",
+      "defaultValue": "OpenAI",
+      "metadata": {
+        "description": "Model format (OpenAI for GPT models)."
+      }
+    },
+    "modelSkuName": {
+      "type": "string",
+      "defaultValue": "GlobalStandard",
+      "metadata": {
+        "description": "SKU name for model deployments."
+      }
+    },
+    "modelCapacity": {
+      "type": "int",
+      "defaultValue": 10,
+      "metadata": {
+        "description": "Capacity (tokens-per-minute in thousands) for the primary model."
+      }
+    },
+    "deploySecondModel": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy a second model (gpt-4.1) for the optional Lab 5 comparison."
+      }
+    },
+    "secondModelName": {
+      "type": "string",
+      "defaultValue": "gpt-4.1",
+      "metadata": {
+        "description": "Second model name for comparison lab."
+      }
+    },
+    "secondModelVersion": {
+      "type": "string",
+      "defaultValue": "2025-04-14",
+      "metadata": {
+        "description": "Second model version."
+      }
+    },
+    "secondModelCapacity": {
+      "type": "int",
+      "defaultValue": 10,
+      "metadata": {
+        "description": "Capacity for the second model."
+      }
+    },
+    "enableHostedAgents": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable ACR and capability host for Lab 6 hosted agent deployment."
+      }
+    }
+  },
+  "variables": {
+    "resourceToken": "[toLower(uniqueString(subscription().id, parameters('environmentName'), parameters('location')))]",
+    "resourceGroupName": "[concat('rg-', parameters('environmentName'))]",
+    "logAnalyticsName": "[concat('log-', variables('resourceToken'))]",
+    "appInsightsName": "[concat('appi-', variables('resourceToken'))]",
+    "aiServicesName": "[concat('ai-', variables('resourceToken'))]",
+    "projectName": "[concat(parameters('environmentName'), '-project')]",
+    "acrName": "[replace(concat('ai-', variables('resourceToken')), '-', '')]",
+    "tags": {
+      "azd-env-name": "[parameters('environmentName')]",
+      "lab": "get-started-foundry-models"
+    },
+    "cognitiveServicesOpenAIUserRoleId": "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd",
+    "cognitiveServicesContributorRoleId": "25fbc0a9-bd7c-42a3-aa1a-3b75d497ee68",
+    "cognitiveServicesUserRoleId": "a97b65f3-24c7-4388-baec-2e87135dc908",
+    "acrPullRoleId": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+    "acrPushRoleId": "8311e382-0749-4cb8-b61a-304f252e45ec"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2024-03-01",
+      "name": "[variables('resourceGroupName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]"
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2024-03-01",
+      "name": "lab520-resources",
+      "resourceGroup": "[variables('resourceGroupName')]",
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('resourceGroupName'))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "resources": [
+            {
+              "comments": "Log Analytics Workspace",
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2023-09-01",
+              "name": "[variables('logAnalyticsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": 30
+              }
+            },
+            {
+              "comments": "Application Insights",
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[variables('appInsightsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "kind": "web",
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+              ],
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+              }
+            },
+            {
+              "comments": "Azure AI Services (Foundry Account)",
+              "type": "Microsoft.CognitiveServices/accounts",
+              "apiVersion": "2025-06-01",
+              "name": "[variables('aiServicesName')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "kind": "AIServices",
+              "sku": {
+                "name": "S0"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "allowProjectManagement": true,
+                "customSubDomainName": "[variables('aiServicesName')]",
+                "networkAcls": {
+                  "defaultAction": "Allow",
+                  "virtualNetworkRules": [],
+                  "ipRules": []
+                },
+                "publicNetworkAccess": "Enabled",
+                "disableLocalAuth": false
+              }
+            },
+            {
+              "comments": "Foundry Project",
+              "type": "Microsoft.CognitiveServices/accounts/projects",
+              "apiVersion": "2025-06-01",
+              "name": "[concat(variables('aiServicesName'), '/', variables('projectName'))]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', variables('aiServicesName'))]"
+              ],
+              "properties": {
+                "description": "Get Started with Models in Microsoft Foundry - Workshop Project",
+                "displayName": "[variables('projectName')]"
+              }
+            },
+            {
+              "comments": "Application Insights Connection on Project",
+              "type": "Microsoft.CognitiveServices/accounts/projects/connections",
+              "apiVersion": "2025-04-01-preview",
+              "name": "[concat(variables('aiServicesName'), '/', variables('projectName'), '/appi-connection')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiServicesName'), variables('projectName'))]",
+                "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
+              ],
+              "properties": {
+                "category": "AppInsights",
+                "target": "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]",
+                "authType": "ApiKey",
+                "isSharedToAll": true,
+                "credentials": {
+                  "key": "[reference(resourceId('Microsoft.Insights/components', variables('appInsightsName')), '2020-02-02').ConnectionString]"
+                },
+                "metadata": {
+                  "ApiType": "Azure",
+                  "ResourceId": "[resourceId('Microsoft.Insights/components', variables('appInsightsName'))]"
+                }
+              }
+            },
+            {
+              "comments": "Primary Model Deployment (gpt-4.1-mini)",
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2025-06-01",
+              "name": "[concat(variables('aiServicesName'), '/', parameters('modelName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', variables('aiServicesName'))]"
+              ],
+              "sku": {
+                "name": "[parameters('modelSkuName')]",
+                "capacity": "[parameters('modelCapacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "[parameters('modelFormat')]",
+                  "name": "[parameters('modelName')]",
+                  "version": "[parameters('modelVersion')]"
+                },
+                "raiPolicyName": "Microsoft.DefaultV2"
+              }
+            },
+            {
+              "comments": "Secondary Model Deployment (optional, for Lab 5)",
+              "condition": "[parameters('deploySecondModel')]",
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2025-06-01",
+              "name": "[concat(variables('aiServicesName'), '/', parameters('secondModelName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/deployments', variables('aiServicesName'), parameters('modelName'))]"
+              ],
+              "sku": {
+                "name": "[parameters('modelSkuName')]",
+                "capacity": "[parameters('secondModelCapacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "[parameters('modelFormat')]",
+                  "name": "[parameters('secondModelName')]",
+                  "version": "[parameters('secondModelVersion')]"
+                },
+                "raiPolicyName": "Microsoft.DefaultV2"
+              }
+            },
+            {
+              "comments": "Azure Container Registry (for hosted agent images)",
+              "condition": "[parameters('enableHostedAgents')]",
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2023-07-01",
+              "name": "[variables('acrName')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('tags')]",
+              "sku": {
+                "name": "Basic"
+              },
+              "properties": {
+                "adminUserEnabled": true,
+                "publicNetworkAccess": "Enabled"
+              }
+            },
+            {
+              "comments": "Capability Host (enables hosted compute for agents)",
+              "condition": "[parameters('enableHostedAgents')]",
+              "type": "Microsoft.CognitiveServices/accounts/capabilityHosts",
+              "apiVersion": "2025-10-01-preview",
+              "name": "[concat(variables('aiServicesName'), '/agents')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', variables('aiServicesName'))]",
+                "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiServicesName'), variables('projectName'))]",
+                "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]"
+              ],
+              "properties": {
+                "capabilityHostKind": "Agents",
+                "enablePublicHostingEnvironment": true
+              }
+            },
+            {
+              "comments": "RBAC: Cognitive Services OpenAI User for attendee (principalType from parameter)",
+              "condition": "[not(empty(parameters('principalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('aiServicesName')), parameters('principalId'), variables('cognitiveServicesOpenAIUserRoleId'))]",
+              "scope": "[concat('Microsoft.CognitiveServices/accounts/', variables('aiServicesName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', variables('aiServicesName'))]"
+              ],
+              "properties": {
+                "principalId": "[parameters('principalId')]",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cognitiveServicesOpenAIUserRoleId'))]",
+                "principalType": "[parameters('principalType')]"
+              }
+            },
+            {
+              "comments": "RBAC: Cognitive Services Contributor for attendee (principalType from parameter)",
+              "condition": "[not(empty(parameters('principalId')))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('aiServicesName')), parameters('principalId'), variables('cognitiveServicesContributorRoleId'))]",
+              "scope": "[concat('Microsoft.CognitiveServices/accounts/', variables('aiServicesName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', variables('aiServicesName'))]"
+              ],
+              "properties": {
+                "principalId": "[parameters('principalId')]",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cognitiveServicesContributorRoleId'))]",
+                "principalType": "[parameters('principalType')]"
+              }
+            },
+            {
+              "comments": "RBAC: Cognitive Services User for project managed identity (always ServicePrincipal)",
+              "condition": "[parameters('enableHostedAgents')]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts', variables('aiServicesName')), variables('projectName'), variables('cognitiveServicesUserRoleId'))]",
+              "scope": "[concat('Microsoft.CognitiveServices/accounts/', variables('aiServicesName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiServicesName'), variables('projectName'))]"
+              ],
+              "properties": {
+                "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiServicesName'), variables('projectName')), '2025-06-01', 'Full').identity.principalId]",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cognitiveServicesUserRoleId'))]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            {
+              "comments": "RBAC: AcrPull for project managed identity (always ServicePrincipal)",
+              "condition": "[parameters('enableHostedAgents')]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), variables('projectName'), variables('acrPullRoleId'))]",
+              "scope": "[concat('Microsoft.ContainerRegistry/registries/', variables('acrName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]",
+                "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiServicesName'), variables('projectName'))]"
+              ],
+              "properties": {
+                "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiServicesName'), variables('projectName')), '2025-06-01', 'Full').identity.principalId]",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPullRoleId'))]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            {
+              "comments": "RBAC: AcrPush for attendee (principalType from parameter)",
+              "condition": "[and(parameters('enableHostedAgents'), not(empty(parameters('principalId'))))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), parameters('principalId'), variables('acrPushRoleId'))]",
+              "scope": "[concat('Microsoft.ContainerRegistry/registries/', variables('acrName'))]",
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]"
+              ],
+              "properties": {
+                "principalId": "[parameters('principalId')]",
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPushRoleId'))]",
+                "principalType": "[parameters('principalType')]"
+              }
+            }
+          ],
+          "outputs": {
+            "aiServicesName": {
+              "type": "string",
+              "value": "[variables('aiServicesName')]"
+            },
+            "aiServicesEndpoint": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', variables('aiServicesName')), '2025-06-01').endpoint]"
+            },
+            "projectName": {
+              "type": "string",
+              "value": "[variables('projectName')]"
+            },
+            "projectEndpoint": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiServicesName'), variables('projectName')), '2025-06-01').endpoints['AI Foundry API']]"
+            },
+            "modelDeploymentName": {
+              "type": "string",
+              "value": "[parameters('modelName')]"
+            },
+            "applicationInsightsName": {
+              "type": "string",
+              "value": "[variables('appInsightsName')]"
+            },
+            "acrName": {
+              "type": "string",
+              "value": "[if(parameters('enableHostedAgents'), variables('acrName'), '')]"
+            },
+            "acrLoginServer": {
+              "type": "string",
+              "value": "[if(parameters('enableHostedAgents'), reference(resourceId('Microsoft.ContainerRegistry/registries', variables('acrName')), '2023-07-01').loginServer, '')]"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "AZURE_RESOURCE_GROUP": {
+      "type": "string",
+      "value": "[variables('resourceGroupName')]"
+    },
+    "AZURE_AI_SERVICES_NAME": {
+      "type": "string",
+      "value": "[reference('lab520-resources').outputs.aiServicesName.value]"
+    },
+    "AZURE_AI_PROJECT_NAME": {
+      "type": "string",
+      "value": "[reference('lab520-resources').outputs.projectName.value]"
+    },
+    "AZURE_AI_PROJECT_ENDPOINT": {
+      "type": "string",
+      "value": "[reference('lab520-resources').outputs.projectEndpoint.value]"
+    },
+    "MODEL_DEPLOYMENT_NAME": {
+      "type": "string",
+      "value": "[parameters('modelName')]"
+    },
+    "AZURE_APPLICATION_INSIGHTS_NAME": {
+      "type": "string",
+      "value": "[reference('lab520-resources').outputs.applicationInsightsName.value]"
+    },
+    "AZURE_CONTAINER_REGISTRY_NAME": {
+      "type": "string",
+      "value": "[reference('lab520-resources').outputs.acrName.value]"
+    },
+    "AZURE_CONTAINER_REGISTRY_ENDPOINT": {
+      "type": "string",
+      "value": "[reference('lab520-resources').outputs.acrLoginServer.value]"
+    }
+  }
+}

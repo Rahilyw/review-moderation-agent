@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "foundry-lab"
+    },
+    "location": {
+      "value": "northcentralus"
+    },
+    "principalId": {
+      "value": ""
+    },
+    "principalType": {
+      "value": "User"
+    },
+    "deploySecondModel": {
+      "value": false
+    },
+    "enableHostedAgents": {
+      "value": true
+    }
+  }
+}
